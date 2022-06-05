@@ -30,4 +30,7 @@ Now finaly run:
 ```bash
 python app.py
 ```
+
+Acess the application on http://127.0.0.1:5000/artists/(put name of artist here)
+
 Also, for this to work you will need to instal redis localy on your machine, please follow [this](https://redis.io/docs/getting-started/installation/install-redis-on-windows/) tutorial.
