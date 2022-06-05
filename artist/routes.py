@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 from flask import Blueprint, jsonify, request
 from botocore.exceptions import ClientError
 import uuid
-#import redis
+import redis
 from datetime import timedelta
 from . import conect_DB
+import json
 
 #adding DB
 client, dynamodb = conect_DB()
@@ -16,7 +17,7 @@ client, dynamodb = conect_DB()
 load_dotenv()
 CLIENT_ACCESS_TOKEN = os.environ.get("CLIENT_ACCESS_TOKEN")
 
-#redis_sto = redis.Redis()
+redis_sto = redis.Redis()
 
 
 routes = Blueprint('routes', __name__)
@@ -24,88 +25,83 @@ routes = Blueprint('routes', __name__)
 @routes.route("/artists/<artist>")
 def artist_get(artist):
 
+    # set artist lowercase
     artist = artist.lower()
 
+    #check cache query param
     cache = True
     if request.args.get('cache'):
         cache = request.args.get('cache').lower() == "true"
 
-    table = dynamodb.Table('flask-artists-api')
+    # conecting to dynamoDB table
+    table = dynamodb.Table('Artist')
 
+    #check DB for artist and get doc
     try:
-        response = table.get_item(Key={'trans_id': 1234})
-        print(response)
+        response = table.get_item(Key={'artist_name': artist})
+        #print(response)
     except ClientError as e:
         print(e.response['Error']['Message'])
     else:
-        print( response['Item'])
-
-    #check DB for artist and get transaction_id
-
-    # if found 
-    #   check datedelta to know if its still in redis or user_reset
-    #   if in redis:
-    #       if cache = true:
-    #           return redis.info
-    #       else:
-    #           redis.info.delete
-    #           update DB to signal user reset
-    # else:
-    #   add to DB (trans_ID, artist, user_reset, cached_time)
-    # r = request!!!!
-    # if cache = true:
-    #   redis.add
-    #   update DB to add current time to cached_time
-    #return r
-
-
-
+        #print( response['Item'] if 'Item' in response else '')
+        pass
     
-    #is_cached = redis_sto.exists(artist) != 0
-    is_cached = False
+    data = {}
 
-    used_cached = False
-
-    if cache:
-        if is_cached:
-            #r = redis_sto.get(artist)
-            used_cached = True
+    # if artist in DB 
+    if 'Item' in response:
+        #is_cached = False
+        is_cached = redis_sto.exists(response['Item']['transaction_id']) != 0
+        if cache:
+           data = redis_sto.hgetall(response['Item']['transaction_id'])
+           print(data)
         else:
+            redis_sto.delete(response['Item']['transaction_id'])
             r=requests.get(
                 f"https://api.genius.com/search?q={artist}", 
-                headers={"Authorization":f"Bearer {CLIENT_ACCESS_TOKEN}"})
-            r = r.json()['response']
+                headers={"Authorization":f"Bearer {CLIENT_ACCESS_TOKEN}"}
+                )
+            response = r.json()['response']['hits']
 
-            # redis_sto.setex(
-            #     artist, 
-            #     timedelta(days=7),
-            #     value=r)
+            i=1
+            for song in response:
+                if i>10:
+                    break
+                data[f'song {i}'] = song['result']['full_title']
+                i+=1
+                
+
 
     else:
-        if is_cached:
-            #redis_sto.delete(artist)      
-            pass
+        # creating uuid to add to dynamoDB DB
+        transaction_id = str(uuid.uuid4())
+        response = table.put_item(
+            Item={
+                'artist_name': artist,
+                'transaction_id': transaction_id
+            }
+        )
 
         r=requests.get(
             f"https://api.genius.com/search?q={artist}", 
-            headers={"Authorization":f"Bearer {CLIENT_ACCESS_TOKEN}"})
-        r = r.json()['response']
+            headers={"Authorization":f"Bearer {CLIENT_ACCESS_TOKEN}"}
+            )
+        response = r.json()['response']['hits']
+        i=1
+        for song in response:
+            if i>10:
+                break
+            data[f'song {i}'] = song['result']['full_title']
+            i+=1
 
+        if cache:
+            redis_sto.hmset(transaction_id, data)
+            redis_sto.expire(transaction_id, timedelta(days=7))
+            # redis_sto.setex(
+            #     transaction_id, 
+            #     timedelta(days=7),
+            #     value=str(data))
 
-    # creating uuid to add to dynamoDB DB
-    transaction_id = uuid.uuid4()
-
-    # add to dynamoDB
-    dynamoDB_obj = {
-        "id": transaction_id,
-        "artist": artist,
-        "used_cached": used_cached,
-        "user_reset_cache": not cache,
-    }
-
-    print(dynamoDB_obj)
-
-    
-    return jsonify(r)
+    return jsonify(data)
 
 

@@ -40,6 +40,47 @@ def conect_DB():
     region_name="sa-east-1"
     )
     ddb_exceptions = client.exceptions
+
+    create_artist_table(dynamodb, client)
+
     return client, dynamodb
+
+def create_artist_table(dynamodb=None, client=None):
+    if not dynamodb:
+        return
+    if not client:
+        return
+
+    try:
+        table = client.create_table(
+            TableName='Artist',
+            KeySchema=[
+            {
+                'AttributeName': 'artist_name',
+                'KeyType': 'HASH'  # Partition key
+            }
+                ],
+            AttributeDefinitions=[
+            {
+                'AttributeName': 'artist_name',
+                'AttributeType': 'S'
+            }
+ 
+                ],
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 1,
+                'WriteCapacityUnits': 1
+            }
+        )
+        print("Creating table")
+        waiter = client.get_waiter('table_exists')
+        waiter.wait(TableName='Artist')
+        print("Table created")
+        
+    except:
+        print("Table exists")
+        return
+
+    return table
 
 
