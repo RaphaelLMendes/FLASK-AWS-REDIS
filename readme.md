@@ -25,6 +25,8 @@ pip install -r requirements.txt
 ```
 Now you need to fill out the .env.sample file with the api authorization keys. Then rename that file to .env
 
+Now finaly run:
+
 ```bash
 python app.py
 ```
